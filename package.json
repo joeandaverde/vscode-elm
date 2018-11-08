@@ -320,6 +320,7 @@
     "@types/node": "^6.0.50",
     "elm-module-parser": "0.0.6",
     "elm-oracle": "^0.2.0",
+    "elm-project-inspect": "0.0.4",
     "mocha": "^2.3.3",
     "prettier": "^1.5.3",
     "request": "^2.69.0",

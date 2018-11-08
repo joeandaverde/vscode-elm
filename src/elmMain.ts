@@ -5,7 +5,7 @@ import { ElmFormatProvider } from './elmFormat';
 import { ElmRangeFormatProvider } from './elmFormat';
 import { activateReactor, deactivateReactor } from './elmReactor';
 
-import { ElmCompletionProvider } from './elmAutocomplete';
+import { ElmCompletionProvider, registerElmCompetionProviders } from './elmAutocomplete';
 import { runLinter, IElmIssue } from './elmLinter';
 import { activateRepl } from './elmRepl';
 import { activateMake } from './elmMake';
@@ -77,13 +77,9 @@ export function activate(ctx: vscode.ExtensionContext) {
   ctx.subscriptions.push(
     vscode.languages.registerHoverProvider(ELM_MODE, new ElmHoverProvider()),
   );
-  ctx.subscriptions.push(
-    vscode.languages.registerCompletionItemProvider(
-      ELM_MODE,
-      new ElmCompletionProvider(),
-      '.',
-    ),
-  );
+
+  registerElmCompetionProviders(ctx);
+
   ctx.subscriptions.push(
     vscode.languages.registerDocumentSymbolProvider(
       ELM_MODE,
