@@ -4,7 +4,7 @@ import * as path from 'path';
 import * as utils from './elmUtils';
 import * as vscode from 'vscode';
 import * as elmTest from './elmTest';
-
+import * as _ from 'lodash';
 import { ElmAnalyse } from './elmAnalyse';
 
 export interface IElmIssueRegion {
@@ -65,7 +65,7 @@ function parseErrorsElm019(line) {
               typeof message === 'string'
                 ? message
                 : '#' + message.string + '#',
-        )
+          )
           .join(''),
         region: problem.region,
         type: 'error',
@@ -82,7 +82,7 @@ function parseErrorsElm019(line) {
       details: errorObject.message
         .map(
           message => (typeof message === 'string' ? message : message.string),
-      )
+        )
         .join(''),
       region: {
         start: {
@@ -230,69 +230,57 @@ function checkForErrors(filename): Promise<IElmIssue[]> {
   });
 }
 
-let compileErrors: vscode.DiagnosticCollection;
+let compileErrors: vscode.DiagnosticCollection = vscode.languages.createDiagnosticCollection('elm-make-diagnostics');
+let elmAnalyseErrors: vscode.DiagnosticCollection = vscode.languages.createDiagnosticCollection('elm-analyse-diagnostics');
 
-export function runLinter(
+export async function runLinter(
   document: vscode.TextDocument,
   elmAnalyse: ElmAnalyse,
-): void {
+): Promise<void> {
   if (document.languageId !== 'elm' || document.uri.scheme !== 'file') {
     return;
   }
 
-  let uri: vscode.Uri = document.uri;
+  const uri: vscode.Uri = document.uri;
+  const cwd: string = utils.detectProjectRoot(uri.fsPath) || vscode.workspace.rootPath;
 
-  if (!compileErrors) {
-    compileErrors = vscode.languages.createDiagnosticCollection('elm');
-  } else {
-    compileErrors.clear();
-  }
+  // elm make stops reporting when it has reached an unknown state (probably to void reporting cascading errors).
+  // This means that we will not receive all errors on each elm make invocation.
+  //
+  // The options for diagnostics reporting:
+  //
+  // A) Clear all errors and display only what elm make reports. (current solution)
+  // B) Keep all set of errors around until the file with an error has changed.
+  //    This would require user going to every file that reported an error and saving it to clear errors.
+  //    After saving, the error that WAS in the file will no longer be reported if elm make exited on a different
+  //    error even if the error situation still exists.
+  // C) Determine which files were included in an elm make call and if the type of error reported form elm make is
+  //    a type error then clear all parse errors. If it's a parse error leave type errors because we don't know if they have been remedied.
+  //
+  // Best solution is probably a combination of B and C
 
-  checkForErrors(uri.fsPath)
-    .then((compilerErrors: IElmIssue[]) => {
-      const cwd: string =
-        utils.detectProjectRoot(uri.fsPath) || vscode.workspace.rootPath;
-      let splitCompilerErrors: Map<string, IElmIssue[]> = new Map();
+  elmAnalyseErrors.set(uri, undefined);
+  compileErrors.set(uri, undefined);
 
-      compilerErrors.forEach((issue: IElmIssue) => {
-        // If provided path is relative, make it absolute
-        if (issue.file.startsWith('.')) {
-          issue.file = cwd + issue.file.slice(1);
-        }
-        if (splitCompilerErrors.has(issue.file)) {
-          splitCompilerErrors.get(issue.file).push(issue);
-        } else {
-          splitCompilerErrors.set(issue.file, [issue]);
-        }
-      });
-      // Turn split arrays into diagnostics and associate them with correct files in VS
-      splitCompilerErrors.forEach((issue: IElmIssue[], issuePath: string) => {
-        compileErrors.set(
-          vscode.Uri.file(issuePath),
-          issue.map(error => elmMakeIssueToDiagnostic(error)),
-        );
-      });
-    })
-    .catch(error => {
-      compileErrors.set(document.uri, []);
-    });
+  const elmAnalyseByFile = _.groupBy(elmAnalyse.elmAnalyseIssues, i => i.file);
 
-  if (elmAnalyse.elmAnalyseIssues.length > 0) {
-    let splitCompilerErrors: Map<string, IElmIssue[]> = new Map();
-    elmAnalyse.elmAnalyseIssues.forEach((issue: IElmIssue) => {
-      if (splitCompilerErrors.has(issue.file)) {
-        splitCompilerErrors.get(issue.file).push(issue);
-      } else {
-        splitCompilerErrors.set(issue.file, [issue]);
-      }
-      splitCompilerErrors.forEach(
-        (analyserIssue: IElmIssue[], issuePath: string) => {
-          compileErrors.set(
-            vscode.Uri.file(issuePath),
-            analyserIssue.map(error => elmMakeIssueToDiagnostic(error)),
-          );
-        },
-      );
-    });
-  }
+  _.forOwn(elmAnalyseByFile, (issues, file) => {
+    elmAnalyseErrors.set(vscode.Uri.file(file), issues.map(i => elmMakeIssueToDiagnostic(i)));
+  });
+
+  const compilerErrors: IElmIssue[] = await checkForErrors(uri.fsPath);
+  const elmCompileByFile = _.groupBy(compilerErrors, issue => {
+    if (issue.file.startsWith('.')) {
+      return cwd + issue.file.slice(1);
+    } else {
+      return issue.file;
+    }
+  });
+
+  _.forOwn(elmCompileByFile, (issues, file) => {
+    compileErrors.set(
+      vscode.Uri.file(file),
+      issues.map(error => elmMakeIssueToDiagnostic(error)),
+    );
+  });
 }
