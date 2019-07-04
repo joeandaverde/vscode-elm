@@ -324,7 +324,9 @@
     "lint": "tslint \"src/**/*.ts\" && prettier \"{src,__{tests,mocks}__}/**/*.ts\"  --single-quote --trailing-comma all --list-different",
     "test": "node ./node_modules/vscode/bin/test",
     "postinstall": "node ./node_modules/vscode/bin/install",
-    "prettier": "prettier --single-quote --trailing-comma all --write \"{src,__{tests,mocks}__}/**/*.ts\""
+    "prettier": "prettier --single-quote --trailing-comma all --write \"{src,__{tests,mocks}__}/**/*.ts\"",
+    "snyk-protect": "snyk protect",
+    "prepublish": "npm run snyk-protect"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.118",
@@ -343,6 +345,8 @@
     "rimraf": "^2.5.2",
     "tslint": "^5.4.3",
     "vscode-uri": "^1.0.0",
-    "ws": "^3.0.0"
-  }
+    "ws": "^3.0.0",
+    "snyk": "^1.189.0"
+  },
+  "snyk": true
 }
